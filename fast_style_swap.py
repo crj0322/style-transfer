@@ -26,7 +26,7 @@ class FastStyleSwap(StyleSwap):
             inverse_net(str): h5 model file path.
         """
         if inverse_net != None:
-            self.inverse_net = load_model(inverse_net)
+            self.inverse_net = load_model(inverse_net, compile=False)
         else:
             self._build_inverse_net()
         

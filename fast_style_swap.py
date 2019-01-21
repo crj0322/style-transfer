@@ -38,7 +38,7 @@ class FastStyleSwap(StyleSwap):
     def _build_swap_model(self):
         super()._build_swap_model()
         generated_img = self.inverse_net(self.swap_model.outputs[0])
-        self.evaluate_op = K.function([*self.swap_model.inputs, K.learning_phase()], [generated_img])
+        self.predict_model = Model(self.swap_model.inputs, generated_img)
 
     def _build_inverse_net(self):
         inputs = Input([self._input_size[0]//4, self._input_size[1]//4, 256])
@@ -71,7 +71,7 @@ class FastStyleSwap(StyleSwap):
 
         self.inverse_net = Model(inputs, x)
     
-    def evaluate(self, style, content):
+    def predict(self, style, content):
         """
         generate transfered image.
 
@@ -84,8 +84,8 @@ class FastStyleSwap(StyleSwap):
         """
         style = np.expand_dims(style, axis=0)
         content = np.expand_dims(content, axis=0)
-        img = self.evaluate_op([style, content, 0])[0]
-        img = self.depreprocess(img)
+        img = self.predict_model.predict([style, content])
+        img = self.roundimg(img)
         return img
         
     def compile_inverse_net(self, lr=1e-2, tv_reg=0.5):
@@ -109,31 +109,3 @@ class FastStyleSwap(StyleSwap):
         opt = optimizers.Adam(lr=lr)
         train_model.compile(opt, loss=(lambda y_true, y_pred: y_pred))
         return train_model
-
-
-def main():
-    fast_swap = FastStyleSwap(inverse_net='deep_inverse_512.h5')
-    
-    import cv2 as cv
-    from utils import squar_resize
-    style = cv.imread('style.jpg')
-    content = cv.imread('content.jpg')
-    style = squar_resize(style, 512)
-    content = squar_resize(content, 512)
-    cv.imshow('style', style)
-    cv.waitKey()
-    cv.imshow('content', content)
-    cv.waitKey()
-    style = style[:, :, ::-1]
-    content = content[:, :, ::-1]
-
-    img = fast_swap.evaluate(style, content)
-    img = img[:, :, ::-1]
-    cv.imshow('transfered', img)
-    cv.waitKey()
-
-    cv.destroyAllWindows()
-    
-
-if __name__ == '__main__':
-    main()

@@ -34,8 +34,11 @@ class StyleSwap():
 
     def _build_swap_model(self):
         # pretrained model
-        base_model = self._base_model_fn(input_shape=self._input_size, include_top=False)
-        base_model = Model(base_model.inputs, base_model.get_layer(self._out_layer_name).output)
+        base_inputs = Input(shape=self._input_size)
+        preprocess_layer = Lambda(self._preprocess)
+        base_model = self._base_model_fn(input_tensor=preprocess_layer(base_inputs), 
+            input_shape=self._input_size, include_top=False)
+        base_model = Model(base_inputs, base_model.get_layer(self._out_layer_name).output)
         for layer in base_model.layers:
             layer.trainable = False
         self.base_model = base_model
@@ -43,31 +46,14 @@ class StyleSwap():
         # get feature map
         input_content = Input(batch_shape=(self._content_batch, *self._input_size), name='content')
         input_style = Input(batch_shape=(self._style_batch, *self._input_size), name='style')
-        preprocess_layer = Lambda(self._preprocess)
-        content_feature = base_model(preprocess_layer(input_content))
-        style_feature = base_model(preprocess_layer(input_style))
+        content_feature = base_model(input_content)
+        style_feature = base_model(input_style)
 
         # fast swap
         swaped_feature = Lambda(self._fast_swap)([style_feature, content_feature])
         self.swap_model = Model([input_style, input_content], swaped_feature)
 
-    def _get_style_patches(self, style, stride=1):
-        # style_shape = style.get_shape().as_list()
-        # f = self._patch_size
-        # s = stride
-        # h = (style_shape[1] - f)//s + 1
-        # w = (style_shape[2] - f)//s + 1
-
-        # style_patches = []
-        # for i in range(w):
-        #     for j in range(h):
-        #         patch = tf.slice(style, [0, i*s, j*s, 0], [-1, f, f, -1])
-        #         style_patches.append(tf.identity(patch))
-
-        # style_patches = tf.stack(style_patches, axis=4)
-
-        #################################################
-
+    def _get_style_patches(self, style):
         style_shape = style.get_shape().as_list()
         f = self._patch_size
         h = style_shape[1]
@@ -126,9 +112,9 @@ class StyleSwap():
         loss = K.mean(K.square(generated_feature - swaped_feature))/2 + tv_reg*ltv
         return loss
 
-    def depreprocess(self, img):
+    def roundimg(self, img):
         """
-        map image values from float[-1, 1] to int[0, 255].
+        transform output values to rgb image.
 
         Args:
             img(numpy array): output image of model.
@@ -137,7 +123,6 @@ class StyleSwap():
             numpy array: rgb image of uint8.
         """
         img = np.squeeze(img)
-        # img = (img + 1)*127.5
         img[img < 0] = 0
         img[img > 255] = 255
         img = img.astype(np.uint8)
@@ -159,12 +144,6 @@ class StyleSwap():
         self.generated_img = K.variable(init_img)
         generated_feature = self.base_model(self.generated_img)
         loss = self._calc_loss([swaped_feature, generated_feature, self.generated_img], tv_reg)
-
-        # Define evaluate function of swap model
-        self.swap_fn = K.function(
-            inputs=[*self.swap_model.inputs, K.learning_phase()],
-            outputs=self.swap_model.outputs,
-        )
         
         # Define optimizer and training function
         self.lr = lr
@@ -188,7 +167,7 @@ class StyleSwap():
         """
         style = np.expand_dims(style, axis=0)
         content = np.expand_dims(content, axis=0)
-        swaped_feature = self.swap_fn([style, content, 0])[0]
+        swaped_feature = self.swap_model.predict([style, content])
 
         min_loss = np.inf
         min_count = 0
@@ -212,13 +191,4 @@ class StyleSwap():
         print('final loss = %.4f' % (loss))
         img = K.get_value(self.generated_img)
         
-        return self.depreprocess(img)
-
-
-def main():
-    model = vgg16.VGG16(include_top=False)
-    model.summary()
-    
-
-if __name__ == '__main__':
-    main()
+        return self.roundimg(img)

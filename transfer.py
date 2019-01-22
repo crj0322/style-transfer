@@ -14,28 +14,30 @@ flags.DEFINE_integer('size', 512, 'Net input image size')
 FLAGS = flags.FLAGS
 
 def main(_):
-    fast_swap = FastStyleSwap(input_size=[FLAGS.size, FLAGS.size, 3], 
-        inverse_net=FLAGS.inverse_net)
-    
+    # read image
     style = cv.imread(FLAGS.style)
     content = cv.imread(FLAGS.content)
-    if style.shape[0] > FLAGS.size or style.shape[1] > FLAGS.size:
-        style = squar_resize(style, FLAGS.size)
-    else:
-        # padding
-        pass
-    if content.shape[0] > FLAGS.size or content.shape[1] > FLAGS.size:
-        content = squar_resize(content, FLAGS.size)
-    else:
-        # padding
-        pass
+    if style is None:
+        print('read %s fialed.' % (FLAGS.style))
+        return
+    if content is None:
+        print('read %s fialed.' % (FLAGS.content))
+        return
+    
+    style = squar_resize(style, FLAGS.size)
+    content = squar_resize(content, FLAGS.size)
+    cv.imwrite('data/style1.jpg', style)
     cv.imshow('style', style)
-    # cv.waitKey()
     cv.imshow('content', content)
     cv.waitKey()
     style = style[:, :, ::-1]
     content = content[:, :, ::-1]
 
+    # build model
+    fast_swap = FastStyleSwap(input_size=[FLAGS.size, FLAGS.size, 3], 
+        inverse_net=FLAGS.inverse_net)
+    
+    # transfer
     start = time.clock()
     img = fast_swap.predict(style, content)
     end = time.clock()
@@ -43,9 +45,7 @@ def main(_):
     img = img[:, :, ::-1]
     cv.imshow('transfered', img)
     cv.waitKey()
- 
     cv.destroyAllWindows()
-
     cv.imwrite(FLAGS.output, img)
 
 if __name__ == '__main__':

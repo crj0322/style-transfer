@@ -7,7 +7,7 @@ def squar_resize(img, dst_size):
         row_start = (rows - cols)//2
         row_end = row_start + cols
         img = img[row_start:row_end, :]
-    else:
+    elif rows < cols:
         col_start = (cols - rows)//2
         col_end = col_start + rows
         img = img[:, col_start:col_end, :]

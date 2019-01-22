@@ -26,7 +26,6 @@ def main(_):
     
     style = squar_resize(style, FLAGS.size)
     content = squar_resize(content, FLAGS.size)
-    cv.imwrite('data/style1.jpg', style)
     cv.imshow('style', style)
     cv.imshow('content', content)
     cv.waitKey()

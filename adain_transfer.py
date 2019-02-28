@@ -8,26 +8,22 @@ from keras import backend as K
 
 
 class AdainTransfer():
-    def __init__(self, input_size=[224, 224, 3], 
-        base_model_fn=vgg19.VGG19, preprocess=vgg19.preprocess_input, 
+    def __init__(self, base_model_fn=vgg19.VGG19, preprocess=vgg19.preprocess_input, 
         out_layer_name=['block1_conv1', 'block2_conv1', 'block3_conv1', 'block4_conv1']):
         """
         Args:
-            input_size(list of int): input image size.
             base_model_fn(function): model function used for build base model.
             preprocess(function): preprocess function like: (lambda x: (x/127.5. - 1.)).
-            out_layer_name(str): output layer name of base model for style swap.
+            out_layer_name(str): output layer name of base model for calculation.
         """
-        self._input_size = input_size
 
-        self._build_encoder(base_model_fn, preprocess, out_layer_name)
+        self._build_transfer_model(base_model_fn, preprocess, out_layer_name)
 
-    def _build_encoder(self, base_model_fn, preprocess, out_layer_name):
+    def _build_transfer_model(self, base_model_fn, preprocess, out_layer_name):
         # pretrained model
-        base_inputs = Input(shape=self._input_size)
-        preprocess_layer = Lambda(preprocess)
-        base_model = base_model_fn(input_tensor=preprocess_layer(base_inputs), 
-            input_shape=self._input_size, include_top=False)
+        base_inputs = Input(shape=[None, None, 3])
+        base_model = base_model_fn(input_tensor=Lambda(preprocess)(base_inputs), 
+            include_top=False)
         outputs = [base_model.get_layer(layer_name).output for layer_name in out_layer_name]
         base_model = Model(base_inputs, outputs)
         for layer in base_model.layers:
@@ -35,8 +31,8 @@ class AdainTransfer():
         self.base_model = base_model
 
         # get feature map
-        input_content = Input(shape=self._input_size, name='content')
-        input_style = Input(shape=self._input_size, name='style')
+        input_content = Input(shape=[None, None, 3], name='content')
+        input_style = Input(shape=[None, None, 3], name='style')
         content_feature = base_model(input_content)[-1]
         style_feature_list = base_model(input_style)
 
@@ -92,7 +88,7 @@ class AdainTransfer():
         img = img.astype(np.uint8)
         return img
 
-    def build_train_fn(self, lr=1e-1, lambd=0.5, init_img=None):
+    def build_train_fn(self, input_size, lr=1e-1, lambd=0.5, init_img=None):
         """
         build keras train function.
 
@@ -104,7 +100,7 @@ class AdainTransfer():
         # loss
         phi_s_t = [Input(l.get_shape().as_list()[1:]) for l in self.encoder.outputs]
         if init_img == None:
-            init_img = np.random.uniform(low=-0.1, high=0.1, size=[1, *self._input_size])
+            init_img = np.random.uniform(low=-0.1, high=0.1, size=[1, *input_size])
         self.generated_img = K.variable(init_img)
         phi_gt = self.base_model(self.generated_img)
         loss = self._calc_loss([*phi_s_t, *phi_gt], lambd)
@@ -156,8 +152,3 @@ class AdainTransfer():
         img = K.get_value(self.generated_img)
         
         return self.roundimg(img)
-
-
-input_size = [512, 512, 3]
-model = AdainTransfer(input_size=input_size)
-model.build_train_fn(lr=10, lambd=0.5)
